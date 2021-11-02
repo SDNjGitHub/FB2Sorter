@@ -50,6 +50,7 @@
 				Click="RunMigration_Click" Background="#3303F918" FocusVisualPrimaryBrush="#FFE82B2B" FocusVisualSecondaryBrush="#99E05D5D"/>
         </StackPanel>
         <TextBlock x:Name="textBlockDestination" Width="300" Height="30" TextAlignment="Center"/>
+        
         <ProgressBar x:Name="progressBar" Maximum="100" Width="300" Height="30" ValueChanged="progressBar_ValueChanged" Background="#33070AF0" />
         <TextBlock x:Name="textBlock1" Width="300" Height="30" TextAlignment="Center"/>
 

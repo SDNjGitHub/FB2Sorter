@@ -4,12 +4,16 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Linq;
 using System.Xml.XPath;
+using Windows.Foundation;
 using Windows.Storage;
 using Windows.Storage.Search;
 using Windows.Storage.Streams;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -29,31 +33,54 @@ namespace FB2Sorter
 
         public MainPage()
         {
-            LoadSettings();
             InitializeComponent();
+            LoadSettings();
         }
 
-        private async void LoadSettings()
+        private void LoadSettings()
         {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             ApplicationDataContainer localSettings = ApplicationData.Current.LocalSettings;
             var source = localSettings.Values["source"];
             if (source != null)
                 try
                 {
-                    sourceFolder = await StorageFolder.GetFolderFromPathAsync(source.ToString());
-                    textBlockSource.Text = sourceFolder.Path.ToString();
+                    StorageFolder.GetFolderFromPathAsync(source.ToString()).Completed = SetSourceFolder;
                 }
                 catch (Exception) {}
             var destination = localSettings.Values["destination"];
             if (destination != null)
                 try
                 {
-                    destinationFolder = await StorageFolder.GetFolderFromPathAsync(destination.ToString());
-                    textBlockDestination.Text = destinationFolder.Path.ToString();
+                    StorageFolder.GetFolderFromPathAsync(destination.ToString()).Completed = SetDestinationFolder;
                 }
                 catch (Exception){}
+        }
 
-            progressBar.Value = 0;
+        private void SetSourceFolder(IAsyncOperation<StorageFolder> asyncInfo, AsyncStatus asyncStatus)
+        {
+            if (asyncStatus.Equals(AsyncStatus.Completed))
+            {
+                sourceFolder = asyncInfo.GetResults();
+                Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                () =>
+                {
+                    textBlockSource.Text = sourceFolder.Path.ToString();
+                });
+            }
+        }
+
+        private void SetDestinationFolder(IAsyncOperation<StorageFolder> asyncInfo, AsyncStatus asyncStatus)
+        {
+            if (asyncStatus.Equals(AsyncStatus.Completed))
+            {
+                destinationFolder = asyncInfo.GetResults();
+                Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                () =>
+                {
+                    textBlockDestination.Text = destinationFolder.Path.ToString();
+                });
+            }
         }
 
         private async void SelectFolder_Click(object sender, RoutedEventArgs e)
@@ -69,19 +96,18 @@ namespace FB2Sorter
                 // Application now has read/write access to all contents in the picked folder
                 // (including other sub-folder contents)
                 Windows.Storage.AccessCache.StorageApplicationPermissions.
-                FutureAccessList.AddOrReplace("PickedFolderToken", folder);
+                FutureAccessList.AddOrReplace("PickedFolderToken" + button.Tag.ToString(), folder);
                 button.Content = "" + folder.Name;
                 if (button.Tag.ToString() == "source")
                 {
                     sourceFolder = folder;
-                    SaveSettings();
                 }
                 else
                 if (button.Tag.ToString() == "destination")
                 {
                     destinationFolder = folder;
-                    SaveSettings();
                 }
+                SaveSettings();
             }
             else
             {
@@ -101,10 +127,16 @@ namespace FB2Sorter
         private async void RunMigration_Click(object sender, RoutedEventArgs e)
         {
             Button button = (Button)sender;
+            RunMigration_Click(button);
+        }
+
+        private async void RunMigration_Click(Button button)
+        {
+            button.IsEnabled = false;
+            progressBar.Value = 0;
             try
             {
-                button.IsEnabled = false;
-                    Migrate();
+                Migrate();
             }
             catch (Exception exc)
             {
@@ -120,6 +152,7 @@ namespace FB2Sorter
             finally
             {
                 button.IsEnabled = true;
+                progressBar.Value = 100;
             }
         }
 
@@ -157,7 +190,7 @@ namespace FB2Sorter
                         continue;
                     }
 
-                    using (var stream = await sourceFile.OpenStreamForReadAsync())
+                    using (Stream stream = await sourceFile.OpenStreamForReadAsync())
                     {
                         XDocument doc = XDocument.Load(stream);
                         var namespaceManager = new XmlNamespaceManager(new NameTable());
@@ -168,19 +201,32 @@ namespace FB2Sorter
                             XElement author = title.XPathSelectElement("//fb:author", namespaceManager);
 
                             XElement lastNameElement = author.XPathSelectElement("fb:last-name", namespaceManager);
-                            string lastName = lastNameElement != null ? lastNameElement.Value : "";
+                            string lastName = lastNameElement != null ? lastNameElement.Value : "None";
                             XElement middleNameElement = author.XPathSelectElement("fb:middle-name", namespaceManager);
                             string middleName = middleNameElement != null ? middleNameElement.Value : "";
                             XElement firstNameElement = author.XPathSelectElement("fb:first-name", namespaceManager);
-                            string firstName = firstNameElement != null ? firstNameElement.Value : "";
+                            string firstName = firstNameElement != null ? firstNameElement.Value : "None";
 
                             XElement bookTitleElement = title.XPathSelectElement("fb:book-title", namespaceManager);
                             string bookTitle = bookTitleElement != null ? bookTitleElement.Value : "";
-                            Log(log, $"{lastName} - {middleName} - {firstName} '{bookTitle}' = {fileName}");
+
+                            Regex regex = new Regex("\\W");
+
+                            string folderName = $"{regex.Replace(lastName, "")}_{regex.Replace(firstName, "")}";
+                            StorageFolder folder = await destinationFolder.CreateFolderAsync(folderName, CreationCollisionOption.OpenIfExists);
+
+                            fileName = $"{regex.Replace(lastName, "")}_{regex.Replace(firstName, "")}-{regex.Replace(bookTitle, "_")}";
+                            fileName += sourceFile.Name.Substring(sourceFile.Name.LastIndexOf("."));
+
+                            CopyFile(files, sourceFile, fileName, folder);
+                            Log(log, $"{lastName} - {middleName} - {firstName} '{bookTitle}' = {fileName} = {sourceFile.Name}");
                         }
-                       
+                        else
+                        {
+                            Log(log, $"{fileName} - cannot parse");
+                        }
+
                     }
-                    //CopyFile(files, sourceFile, fileName);
                 }
 
                 textBlock1.Text = $"Count: {count}";
@@ -194,17 +240,17 @@ namespace FB2Sorter
             //log.Flush();
         }
 
-        private async void CopyFile(IReadOnlyList<StorageFile> files, StorageFile sourceFile, string fileName)
+        private async void CopyFile(IReadOnlyList<StorageFile> files, StorageFile sourceFile, string fileName, StorageFolder destinationFolder)
         {
-            bool exists = await destinationFolder.FileExistsAsync(fileName);
+            bool exists = destinationFolder.FileExistsAsync(fileName).Result;
             if (!exists)
             {
-                StorageFile destinationFile = await destinationFolder.CreateFileAsync(sourceFile.Name);
+                StorageFile destinationFile = await destinationFolder.CreateFileAsync(fileName);
                 using (var sourceStream = (await sourceFile.OpenReadAsync()).GetInputStreamAt(0))
                 {
                     using (var destinationStream = (await destinationFile.OpenAsync(FileAccessMode.ReadWrite)).GetOutputStreamAt(0))
                     {
-                        await RandomAccessStream.CopyAndCloseAsync(sourceStream, destinationStream);
+                        ulong result = await RandomAccessStream.CopyAndCloseAsync(sourceStream, destinationStream);
                     }
                 }
 
