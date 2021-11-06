@@ -44,15 +44,17 @@
 			DataContext="{StaticResource DestinationTitleContext}"	
 				Click="SelectFolder_Click"/>
         -->
-        <TextBlock x:Name="textBlockSource" Width="300" Height="30" TextAlignment="Center"/>
+        <TextBlock x:Name="TextBlockSource" Width="300" Height="30" TextAlignment="Center"/>
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal" >
             <Button x:Name="RunMigration" Content="Run Migration" Margin="20"  Height="104"  Width="300" 
 				Click="RunMigration_Click" Background="#3303F918" FocusVisualPrimaryBrush="#FFE82B2B" FocusVisualSecondaryBrush="#99E05D5D"/>
         </StackPanel>
-        <TextBlock x:Name="textBlockDestination" Width="300" Height="30" TextAlignment="Center"/>
+        <TextBlock x:Name="TextBlockDestination" Width="300" Height="30" TextAlignment="Center"/>
         
-        <ProgressBar x:Name="progressBar" Maximum="100" Width="300" Height="30" ValueChanged="progressBar_ValueChanged" Background="#33070AF0" />
-        <TextBlock x:Name="textBlock1" Width="300" Height="30" TextAlignment="Center"/>
+        <ProgressBar x:Name="ProgressBar" Maximum="100" Width="300" Height="30" ValueChanged="ProgressBar_ValueChanged" Background="#33070AF0" />
+        <TextBlock x:Name="TextBlock1" Width="300" Height="30" TextAlignment="Center"/>
+        <Button x:Name="StopMigration" Content="Stop" Margin="20"  Height="32"  Width="300" 
+				Click="StopMigration_Click" Background="BlueViolet" FocusVisualPrimaryBrush="#FFE82B2B" FocusVisualSecondaryBrush="#99E05D5D"/>
 
     </StackPanel>
 </Page>
